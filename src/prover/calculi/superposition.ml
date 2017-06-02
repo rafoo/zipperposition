@@ -421,20 +421,6 @@ module Make(Env : Env.S) : S with module Env = Env = struct
     Util.exit_prof prof_infer_passive;
     new_clauses
 
-  (* can we unify [t] and [u] for equality resolution? Only if they
-     are not variables shielded elsewhere *)
-  let can_eq_res lits t u =
-    let var_ok v =
-      not (Purify.type_is_purifiable @@ HVar.ty v) ||
-      not (Purify.is_shielded v lits)
-    in
-    begin match T.view t, T.view u with
-      | T.Var v1, T.Var v2 -> var_ok v1 || var_ok v2
-      | T.Var v, _
-      | _, T.Var v -> var_ok v
-      | _ -> true
-    end
-
   let infer_equality_resolution clause =
     Util.enter_prof prof_infer_equality_resolution;
     let eligible = C.Eligible.always in
@@ -442,10 +428,6 @@ module Make(Env : Env.S) : S with module Env = Env = struct
     let new_clauses =
       Lits.fold_eqn ~sign:false ~ord:(Ctx.ord ())
         ~both:false ~eligible (C.lits clause)
-      |> Sequence.filter
-        (fun (l, r, sign, _) ->
-           assert (not sign);
-           can_eq_res (C.lits clause) l r)
       |> Sequence.filter_map
         (fun (l, r, _, l_pos) ->
            let pos = Lits.Pos.idx l_pos in
@@ -861,9 +843,7 @@ module Make(Env : Env.S) : S with module Env = Env = struct
       Array.iteri
         (fun i lit ->
            let can_destr_eq_var v =
-             not (var_in_subst_ !us v 0) &&
-             ( not (Purify.type_is_purifiable @@ HVar.ty v) ||
-               not (Purify.is_shielded v (C.lits c)))
+             not (var_in_subst_ !us v 0)
            in
            if BV.get bv i then match lit with
              | Lit.HO_constraint (l, r)
