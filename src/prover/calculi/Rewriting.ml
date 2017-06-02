@@ -52,9 +52,15 @@ module Make(E : Env_intf.S) = struct
       (fun (u_p, passive_pos) ->
          RW.Term.narrow_term ~scope_rules:sc_rule (u_p,sc_c)
          |> Sequence.map
-           (fun (rule,subst) ->
+           (fun (rule,us) ->
               let i, lit_pos = Literals.Pos.cut passive_pos in
               let renaming = C.Ctx.renaming_clear() in
+              let subst = Unif_subst.subst us in
+              let c_guard =
+                Unif_subst.constr_l us
+                |> Unif_constr.apply_subst_l ~renaming subst (sc_rule,sc_c)
+                |> List.map Literal.of_unif_constr
+              in
               (* side literals *)
               let lits_passive = C.lits c in
               let lits_passive =
@@ -72,7 +78,8 @@ module Make(E : Env_intf.S) = struct
                 Proof.Step.inference [C.proof_parent_subst (c,0) subst]
                   ~rule:(Proof.Rule.mk "narrow") in
               let c' =
-                C.create ~trail:(C.trail c) ~penalty:(C.penalty c) (new_lit :: lits') proof
+                C.create ~trail:(C.trail c) ~penalty:(C.penalty c)
+                  (new_lit :: c_guard @ lits') proof
               in
               Util.debugf ~section 3
                 "@[<2>term narrowing:@ from `@[%a@]`@ to `@[%a@]`@ \

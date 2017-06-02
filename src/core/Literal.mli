@@ -87,7 +87,7 @@ val subsumes : ?subst:Subst.t -> t Scoped.t -> t Scoped.t ->
 val variant : ?subst:Subst.t -> t Scoped.t -> t Scoped.t ->
   Subst.t Sequence.t
 
-val unify : ?subst:Subst.t -> t Scoped.t -> t Scoped.t -> Subst.t Sequence.t
+val unify : ?subst:Unif_subst.t -> t Scoped.t -> t Scoped.t -> Unif_subst.t Sequence.t
 
 val are_variant : t -> t -> bool
 
@@ -111,6 +111,9 @@ val is_constraint : t -> bool
 (** Is the literal a constraint? *)
 
 val is_ho_constraint : t -> bool
+
+val of_unif_constr : Unif_constr.t -> t
+(** Make a (negative) literal out of an unification constraint. *)
 
 val map : (term -> term) -> t -> t (** functor *)
 val fold : ('a -> term -> 'a) -> 'a -> t -> 'a  (** basic fold *)

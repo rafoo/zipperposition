@@ -144,18 +144,28 @@ end = struct
       |> Sequence.flat_map
         (fun t -> RW.Term.narrow_term ~scope_rules:sc_rule (t,sc_c))
       |> Sequence.to_rev_list
-      |> CCList.sort_uniq ~cmp:(CCOrd.pair RW.Term.Rule.compare Subst.compare)
+      |> CCList.sort_uniq
+        ~cmp:CCOrd.(pair RW.Term.Rule.compare Unif_subst.compare)
     in
     (* now do one step for each *)
     begin
       Sequence.of_list subst_rule_l
       |> Sequence.map
-        (fun (rule,subst) ->
+        (fun (rule,us) ->
            let renaming = Subst.Renaming.create() in
+           let subst = Unif_subst.subst us in
+           let c_guard =
+             Unif_subst.constr_l us
+             |> Unif_constr.apply_subst_l ~renaming subst (sc_rule,sc_c)
+             |> Literals.of_unif_constr_l
+           in
            (* evaluate new formula by substituting and evaluating *)
            let f' =
-             List.map
-               (fun lits -> Literals.apply_subst ~renaming subst (lits,sc_c)) f
+             f
+             |> List.map
+               (fun lits ->
+                  CCArray.append c_guard
+                    (Literals.apply_subst ~renaming subst (lits,sc_c)))
              |> normalize_form
            in
            (* make new formula *)
@@ -178,18 +188,28 @@ end = struct
       |> Sequence.flat_map
         (fun lit -> RW.Lit.narrow_lit ~scope_rules:sc_rule (lit,sc_c))
       |> Sequence.to_rev_list
-      |> CCList.sort_uniq ~cmp:(CCOrd.pair RW.Lit.Rule.compare Subst.compare)
+      |> CCList.sort_uniq
+        ~cmp:CCOrd.(pair RW.Lit.Rule.compare Unif_subst.compare)
     in
     (* now do one step for each *)
     begin
       Sequence.of_list subst_rule_l
       |> Sequence.map
-        (fun (rule,subst) ->
+        (fun (rule,us) ->
            let renaming = Subst.Renaming.create() in
+           let subst = Unif_subst.subst us in
+           let c_guard =
+             Unif_subst.constr_l us
+             |> Unif_constr.apply_subst_l ~renaming subst (sc_rule,sc_c)
+             |> Literals.of_unif_constr_l
+           in
            (* evaluate new formula by substituting and evaluating *)
            let f' =
-             List.map
-               (fun lits -> Literals.apply_subst ~renaming subst (lits,sc_c)) f
+             f
+             |> List.map
+               (fun lits ->
+                  CCArray.append c_guard
+                    (Literals.apply_subst ~renaming subst (lits,sc_c)))
              |> normalize_form
            in
            (* make new formula *)

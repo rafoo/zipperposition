@@ -76,6 +76,8 @@ let apply_subst ~renaming subst (lits,sc) =
     (fun lit -> Lit.apply_subst ~renaming subst (lit,sc))
     lits
 
+let of_unif_constr_l l = l |> List.map Literal.of_unif_constr |> Array.of_list
+
 let map f lits =
   Array.map (fun lit -> Lit.map f lit) lits
 
