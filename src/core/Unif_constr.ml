@@ -5,18 +5,39 @@
 
 module T = InnerTerm
 
-type t = InnerTerm.t * InnerTerm.t
+type term = T.t
 
-let apply_subst ~renaming subst (sc1,sc2) (c:t): t =
-  let t, u = c in
-  Subst.apply ~renaming subst (t,sc1), Subst.apply ~renaming subst (u,sc2)
+type t = {
+  t1: term;
+  sc1: Scoped.scope;
+  t2: term;
+  sc2: Scoped.scope;
+}
 
-let apply_subst_l ~renaming subst (sc1,sc2) (l:_ list): _ list =
-  List.map (apply_subst ~renaming subst (sc1,sc2)) l
+let make (t1,sc1) (t2,sc2) = {t1;sc1;t2;sc2}
 
-let pp out (t,u) = CCFormat.fprintf out "(@[%a =?=@ %a@])" T.pp t T.pp u
+let apply_subst ~renaming subst (c:t): term * term =
+  Subst.apply ~renaming subst (c.t1, c.sc1),
+  Subst.apply ~renaming subst (c.t2, c.sc2)
 
-let hash = Hash.pair T.hash T.hash
-let equal = CCPair.equal T.equal T.equal
-let compare = CCPair.compare T.compare T.compare
+let apply_subst_l ~renaming subst (l:t list): _ list =
+  List.map (apply_subst ~renaming subst) l
+
+let pp out (c:t) =
+  CCFormat.fprintf out "(@[%a =?=@ %a@])" T.pp c.t1 T.pp c.t2
+
+let hash (c:t) = Hash.combine4 (T.hash c.t1) c.sc1 (T.hash c.t2) c.sc2
+let equal c1 c2 =
+  T.equal c1.t1 c2.t1 &&
+  T.equal c1.t2 c2.t2 &&
+  c1.sc1 = c2.sc1 &&
+  c1.sc2 = c2.sc2
+
+let compare c1 c2: int =
+  let open CCOrd.Infix in
+  T.compare c1.t1 c2.t1
+  <?> (T.compare, c1.t2, c2.t2)
+  <?> (CCOrd.int, c1.sc1, c2.sc1)
+  <?> (CCOrd.int, c1.sc2, c2.sc2)
+
 let to_string = CCFormat.to_string pp

@@ -154,11 +154,7 @@ end = struct
         (fun (rule,us) ->
            let renaming = Subst.Renaming.create() in
            let subst = Unif_subst.subst us in
-           let c_guard =
-             Unif_subst.constr_l us
-             |> Unif_constr.apply_subst_l ~renaming subst (sc_rule,sc_c)
-             |> Literals.of_unif_constr_l
-           in
+           let c_guard = Literals.of_unif_subst ~renaming us in
            (* evaluate new formula by substituting and evaluating *)
            let f' =
              f
@@ -198,11 +194,7 @@ end = struct
         (fun (rule,us) ->
            let renaming = Subst.Renaming.create() in
            let subst = Unif_subst.subst us in
-           let c_guard =
-             Unif_subst.constr_l us
-             |> Unif_constr.apply_subst_l ~renaming subst (sc_rule,sc_c)
-             |> Literals.of_unif_constr_l
-           in
+           let c_guard = Literals.of_unif_subst ~renaming us in
            (* evaluate new formula by substituting and evaluating *)
            let f' =
              f

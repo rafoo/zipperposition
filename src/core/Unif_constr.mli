@@ -3,25 +3,32 @@
 
 (** {1 Unification Constraint} *)
 
+type term = InnerTerm.t
+
 (** A constraint delayed because unification for this pair of terms is
       not syntactic *)
-type t = InnerTerm.t * InnerTerm.t
+type t = private {
+  t1: term;
+  sc1: Scoped.scope;
+  t2: term;
+  sc2: Scoped.scope;
+}
+
+val make : term Scoped.t -> term Scoped.t -> t
 
 (** Apply a substitution to a delayed constraint *)
 val apply_subst :
   renaming:Subst.Renaming.t ->
   Subst.t ->
-  Scoped.scope * Scoped.scope ->
   t ->
-  t
+  term * term
 
 (** Apply a substitution to delayed constraints *)
 val apply_subst_l :
   renaming:Subst.Renaming.t ->
   Subst.t ->
-  Scoped.scope * Scoped.scope ->
   t list ->
-  t list
+  (term * term) list
 
 include Interfaces.HASH with type t := t
 include Interfaces.ORD with type t := t

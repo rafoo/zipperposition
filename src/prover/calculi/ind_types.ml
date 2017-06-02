@@ -131,11 +131,7 @@ module Make(Env : Env_intf.S) = struct
            (* delete i-th literal and build new clause *)
            let new_lits = CCArray.except_idx (C.lits c) i in
            let renaming = Env.Ctx.renaming_clear () in
-           let c_guard =
-             Unif_subst.constr_l us
-             |> Unif_constr.apply_subst_l ~renaming subst (0,0)
-             |> List.map Literal.of_unif_constr
-           in
+           let c_guard = Literal.of_unif_subst ~renaming us in
            let new_lits =
              c_guard @ Literal.apply_subst_list ~renaming subst (new_lits,0)
            in

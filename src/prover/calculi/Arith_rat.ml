@@ -14,6 +14,7 @@ module MF = Monome.Focus
 module AL = Rat_lit
 module ALF = AL.Focus
 module Stmt = Statement
+module US = Unif_subst
 
 let stat_rat_sup = Util.mk_stat "rat.superposition"
 let stat_rat_cancellation = Util.mk_stat "rat.rat_cancellation"
@@ -164,7 +165,7 @@ module Make(E : Env.S) : S with module Env = E = struct
       passive_pos : Position.t;
       passive_lit : AL.Focus.t;
       passive_scope : int;
-      subst : Subst.t;
+      subst : Unif_subst.t;
     }
   end
 
@@ -175,10 +176,11 @@ module Make(E : Env.S) : S with module Env = E = struct
     let open SupInfo in
     let ord = Ctx.ord () in
     let renaming = Ctx.renaming_clear () in
-    let subst = info.subst in
+    let us = info.subst in
     let idx_a, _ = Lits.Pos.cut info.active_pos in
     let idx_p, _ = Lits.Pos.cut info.passive_pos in
     let s_a = info.active_scope and s_p = info.passive_scope in
+    let subst = Unif_subst.subst us in
     let lit_a = ALF.apply_subst ~renaming subst (info.active_lit,s_a) in
     let lit_p = ALF.apply_subst ~renaming subst (info.passive_lit,s_p) in
     Util.debugf ~section 5
@@ -215,7 +217,8 @@ module Make(E : Env.S) : S with module Env = E = struct
             (M.sum m_p (MF.rest mf_a))
             (M.sum (MF.rest mf_p) m_a)
       in
-      let all_lits = new_lit :: lits_a @ lits_p in
+      let c_guard = Literal.of_unif_subst ~renaming us in
+      let all_lits = new_lit :: c_guard @ lits_a @ lits_p in
       (* build clause *)
       let proof =
         Proof.Step.inference
@@ -483,8 +486,9 @@ module Make(E : Env.S) : S with module Env = E = struct
            (* try to unify terms in [m1] and [m2] *)
            MF.unify_mm (m1,0) (m2,0)
            |> Sequence.fold
-             (fun acc (mf1, mf2, subst) ->
+             (fun acc (mf1, mf2, us) ->
                 let renaming = Ctx.renaming_clear () in
+                let subst = US.subst us in
                 let mf1' = MF.apply_subst ~renaming subst (mf1,0) in
                 let mf2' = MF.apply_subst ~renaming subst (mf2,0) in
                 let is_max_lit = C.is_maxlit (c,0) subst ~idx in
@@ -497,7 +501,8 @@ module Make(E : Env.S) : S with module Env = E = struct
                   let lits' = CCArray.except_idx (C.lits c) idx in
                   let lits' = Lit.apply_subst_list ~renaming subst (lits',0) in
                   let new_lit = Lit.mk_rat_op op (MF.rest mf1') (MF.rest mf2') in
-                  let all_lits = new_lit :: lits' in
+                  let c_guard = Literal.of_unif_subst ~renaming us in
+                  let all_lits = new_lit :: c_guard @ lits' in
                   let proof =
                     Proof.Step.inference
                       ~rule:(Proof.Rule.mk "cancellation")
@@ -541,14 +546,15 @@ module Make(E : Env.S) : S with module Env = E = struct
                 and mf2 = ALF.focused_monome lit2 in
                 try
                   if idx1 = idx2 then raise Unif.Fail;  (* exit *)
-                  let subst = Unif.FO.unification (t1,0) (t2,0) in
+                  let subst = Unif.FO.unify_full (t1,0) (t2,0) in
                   Util.debugf ~section 5
                     "@[<2>arith canc. eq. factoring:@ possible match in @[%a@]@ (at %d, %d)@]"
                     (fun k->k C.pp c idx1 idx2);
                   MF.unify_ff ~subst (mf1,0) (mf2,0)
                   |> Sequence.fold
-                    (fun acc (_, _, subst) ->
+                    (fun acc (_, _, us) ->
                        let renaming = Ctx.renaming_clear () in
+                       let subst = US.subst us in
                        let lit1' = ALF.apply_subst ~renaming subst (lit1,0) in
                        let lit2' = ALF.apply_subst ~renaming subst (lit2,0) in
                        if C.is_maxlit (c,0) subst ~idx:idx1
@@ -574,8 +580,9 @@ module Make(E : Env.S) : S with module Env = E = struct
                          let other_lits =
                            Lit.apply_subst_list
                              ~renaming subst (other_lits,0) in
+                         let c_guard = Literal.of_unif_subst ~renaming us in
                          (* apply subst and build clause *)
-                         let all_lits = new_lits @ other_lits in
+                         let all_lits = c_guard @ new_lits @ other_lits in
                          let proof =
                            Proof.Step.inference
                              ~rule:rule_canc_eq_fact
@@ -612,7 +619,7 @@ module Make(E : Env.S) : S with module Env = E = struct
       right_scope : int;
       right_pos : Position.t;
       right_lit : AL.Focus.t;
-      subst : Subst.t;
+      subst : US.t;
     }
   end
 
@@ -622,10 +629,11 @@ module Make(E : Env.S) : S with module Env = E = struct
     let open ChainingInfo in
     let ord = Ctx.ord () in
     let renaming = S.Renaming.create () in
-    let subst = info.subst in
+    let us = info.subst in
     let idx_l, _ = Lits.Pos.cut info.left_pos in
     let idx_r, _ = Lits.Pos.cut info.right_pos in
     let s_l = info.left_scope and s_r = info.right_scope in
+    let subst = Unif_subst.subst us in
     let lit_l = ALF.apply_subst ~renaming subst (info.left_lit,s_l) in
     let lit_r = ALF.apply_subst ~renaming subst (info.right_lit,s_r) in
     Util.debugf ~section 5
@@ -653,7 +661,8 @@ module Make(E : Env.S) : S with module Env = E = struct
           let lits_l = Lit.apply_subst_list ~renaming subst (lits_l,s_l) in
           let lits_r = CCArray.except_idx (C.lits info.right) idx_r in
           let lits_r = Lit.apply_subst_list ~renaming subst (lits_r,s_r) in
-          let all_lits = new_lit :: lits_l @ lits_r in
+          let c_guard = Literal.of_unif_subst ~renaming us in
+          let all_lits = new_lit :: c_guard @ lits_l @ lits_r in
           let proof =
             Proof.Step.inference
               ~rule:(Proof.Rule.mk "canc_ineq_chaining")
@@ -744,8 +753,9 @@ module Make(E : Env.S) : S with module Env = E = struct
     let ord = Ctx.ord () in
     let acc = ref [] in
     (* do the factoring if ordering conditions are ok *)
-    let _do_factoring ~subst lit1 lit2 i j =
+    let _do_factoring ~subst:us lit1 lit2 i j =
       let renaming = S.Renaming.create () in
+      let subst = US.subst us in
       let lit1 = ALF.apply_subst ~renaming subst (lit1,0) in
       let lit2 = ALF.apply_subst ~renaming subst (lit2,0) in
       (* same coefficient for the focused term *)
@@ -778,7 +788,8 @@ module Make(E : Env.S) : S with module Env = E = struct
             in
             (* negate the literal to obtain a guard *)
             let new_lit = Lit.negate new_lit in
-            let lits = new_lit :: other_lits in
+            let c_guard = Literal.of_unif_subst ~renaming us in
+            let lits = new_lit :: c_guard @ other_lits in
             (* build clauses *)
             let proof =
               Proof.Step.inference

@@ -705,12 +705,14 @@ let is_ho_unif lit = match lit with
   | Equation (t, u, false) -> Term.is_ho_app t || Term.is_ho_app u
   | _ -> false
 
-let of_unif_constr (c:Unif_constr.t) : t =
-  let t, u = c in
-  (* upcast *)
-  let t = T.of_term_unsafe t in
-  let u = T.of_term_unsafe u in
-  mk_neq t u
+let of_unif_subst ~renaming (s:Unif_subst.t) : t list =
+  Unif_subst.constr_l_subst ~renaming s
+  |> List.map
+    (fun (t,u) ->
+       (* upcast *)
+       let t = T.of_term_unsafe t in
+       let u = T.of_term_unsafe u in
+       mk_neq t u)
 
 (** {2 IO} *)
 

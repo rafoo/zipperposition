@@ -112,8 +112,9 @@ val is_constraint : t -> bool
 
 val is_ho_constraint : t -> bool
 
-val of_unif_constr : Unif_constr.t -> t
-(** Make a (negative) literal out of an unification constraint. *)
+val of_unif_subst: renaming:Subst.Renaming.t -> Unif_subst.t -> t list
+(** Make a list of (negative) literals out of the unification constraints
+    contained in this substitution. *)
 
 val map : (term -> term) -> t -> t (** functor *)
 val fold : ('a -> term -> 'a) -> 'a -> t -> 'a  (** basic fold *)

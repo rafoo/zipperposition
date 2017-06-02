@@ -17,11 +17,20 @@ type t
 val empty : t
 (** Empty *)
 
+val is_empty : t -> bool
+(** Both substitution and constraints are empty *)
+
 val subst : t -> Subst.t
 (** Substitution *)
 
 val constr_l : t -> Unif_constr.t list
 (** Constraints *)
+
+val constr_l_subst :
+  renaming:Subst.Renaming.t ->
+  t ->
+  (term*term) list
+(** Apply the substitution to the constraint *)
 
 val has_constr : t -> bool
 (** Is there any constraint? *)
@@ -37,6 +46,13 @@ val add_constr : Unif_constr.t -> t -> t
 val deref : t -> term Scoped.t -> term Scoped.t
 
 val bind : t -> var Scoped.t -> term Scoped.t -> t
+
+val mem : t -> var Scoped.t -> bool
+
+module FO : sig
+  val bind : t -> Type.t HVar.t Scoped.t -> Term.t Scoped.t -> t
+  val mem : t -> Type.t HVar.t Scoped.t -> bool
+end
 
 include Interfaces.HASH with type t := t
 include Interfaces.ORD with type t := t

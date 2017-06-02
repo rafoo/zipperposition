@@ -24,11 +24,23 @@ let make subst cstr_l = {subst; cstr_l}
 
 let empty : t = make Subst.empty []
 
+let is_empty (s:t): bool =
+  Subst.is_empty (subst s) &&
+  CCList.is_empty (constr_l s)
+
 let map_subst ~f t = {t with subst=f t.subst}
 let of_subst s = make s []
 
 let bind t v u = {t with subst=Subst.bind t.subst v u}
+let mem t v = Subst.mem t.subst v
 let deref t v = Subst.deref t.subst v
+
+module FO = struct
+  let bind t (v:Type.t HVar.t Scoped.t) u =
+    {t with subst=Subst.FO.bind t.subst (v:>InnerTerm.t HVar.t Scoped.t) u}
+  let mem t (v:Type.t HVar.t Scoped.t) =
+    Subst.mem t.subst (v :> InnerTerm.t HVar.t Scoped.t)
+end
 
 let has_constr t: bool = constr_l t <> []
 
@@ -54,3 +66,7 @@ let compare a b =
   <?> (CCList.compare Unif_constr.compare, constr_l a, constr_l b)
 
 let to_string = CCFormat.to_string pp
+
+let constr_l_subst ~renaming (s:t): _ list =
+  constr_l s
+  |> Unif_constr.apply_subst_l ~renaming (subst s)

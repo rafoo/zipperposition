@@ -111,15 +111,17 @@ module Make(E : Env.S) : S with module Env = E = struct
             assert (List.length tail1 = List.length tail2);
             (* unify heads, delay the other sub-problems, but unify their types *)
             try
-              let subst = Unif.FO.unification (hd1,0)(hd2,0) in
+              let subst = Unif.FO.unify_full (hd1,0)(hd2,0) in
               let subst =
                 List.fold_left2
                   (fun subst t u ->
-                     Unif.Ty.unification ~subst (T.ty t,0)(T.ty u,0))
+                     Unif.Ty.unify_full ~subst (T.ty t,0)(T.ty u,0))
                   subst tail1 tail2
               in
               Util.incr_stat stat_eq_res_syntactic;
               let renaming = Ctx.renaming_clear () in
+              let c_guard = Literal.of_unif_subst ~renaming subst
+              and subst = Unif_subst.subst subst in
               let rule = Proof.Rule.mk "ho_eq_res_syn" in
               let proof = Proof.Step.inference ~rule
                   [C.proof_parent_subst (c,0) subst] in
@@ -139,7 +141,7 @@ module Make(E : Env.S) : S with module Env = E = struct
                 Literal.apply_subst_list ~renaming subst (new_lits,0)
               in
               let trail = C.trail c and penalty = C.penalty c in
-              let new_c = C.create ~trail ~penalty new_lits proof in
+              let new_c = C.create ~trail ~penalty (c_guard @ new_lits) proof in
               Util.debugf ~section 3
                 "(@[<hv2>ho_eq_res_syn@ :on @[%a@]@ :yields @[%a@]@ :subst %a@])"
                 (fun k->k C.pp c C.pp new_c Subst.pp subst);

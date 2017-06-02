@@ -36,7 +36,7 @@ val to_form : t -> term SLiteral.t list
 val apply_subst : renaming:Subst.Renaming.t ->
   Subst.t -> t Scoped.t -> t
 
-val of_unif_constr_l : Unif_constr.t list -> t
+val of_unif_subst : renaming:Subst.Renaming.t -> Unif_subst.t -> t
 
 val map : (term -> term) -> t -> t
 

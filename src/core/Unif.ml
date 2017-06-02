@@ -191,10 +191,19 @@ module Inner = struct
         let subst = unif_rec ~op subst (varty1,sc1) (varty2,sc2) in
         unif_rec ~op subst (t1',sc1) (t2',sc2)
       | T.DB i, T.DB j -> if i = j then subst else raise Fail
-      | T.Const f, T.Const g when ID.equal f g -> subst
-      | _ when op=O_unify && not (type_is_unifiable (T.ty_exn t1)) ->
-        (* push pair as a constraint, because of typing *)
-        US.add_constr (t1,t2) subst
+      | T.Const f, T.Const g ->
+        if ID.equal f g
+        then subst
+        else raise Fail
+      | _ when op=O_unify &&
+               begin match T.ty t1 with
+                 | T.NoType -> false
+                 | T.HasType ty -> not (type_is_unifiable ty)
+               end ->
+        (* push pair as a constraint, because of typing. *)
+        US.add_constr
+          (Unif_constr.make (t1,sc1) (t2,sc2))
+          subst
       | T.App (f1, l1), T.App (f2, l2) ->
         begin match T.view f1, T.view f2 with
           | T.Const id1, T.Const id2 ->
@@ -205,13 +214,7 @@ module Inner = struct
           | _, T.Var _ ->
             (* currying: unify "from the right" *)
             let l1, l2 = pair_lists f1 l1 f2 l2 in
-            begin
-              try unif_list ~op subst l1 sc1 l2 sc2
-              with Fail ->
-                if op=O_unify
-                then US.add_constr (t1,t2) subst
-                else fail()
-            end
+            unif_list ~op subst l1 sc1 l2 sc2
           | _ -> fail()
         end
       | T.AppBuiltin (s1,l1), T.AppBuiltin (s2, l2) when Builtin.equal s1 s2 ->
