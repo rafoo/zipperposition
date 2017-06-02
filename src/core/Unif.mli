@@ -5,6 +5,7 @@
 
 type subst = Subst.t
 type term = InnerTerm.t
+type ty = InnerTerm.t
 type 'a sequence = ('a -> unit) -> unit
 
 exception Fail
@@ -44,6 +45,9 @@ val pair_lists : term -> term list -> term -> term list -> term list * term list
 (** in HO, we have [f1 l1] and [f2 l2], where application is left-associative.
     we need to unify from the right (the outermost application is on
     the right) so this returns pairs to unify (including heads). *)
+
+val type_is_unifiable : ty -> bool
+(** Can we (syntactically) unify terms of this type? *)
 
 (** {2 Signatures} *)
 

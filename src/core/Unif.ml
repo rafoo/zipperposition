@@ -10,6 +10,7 @@ exception Fail
 
 type subst = S.t
 type term = InnerTerm.t
+type ty = InnerTerm.t
 type 'a sequence = ('a -> unit) -> unit
 
 let prof_unify = Util.mk_profiler "unify"
@@ -123,11 +124,18 @@ type op =
   | O_variant
   | O_equal
 
+let type_is_unifiable (ty:ty): bool = match T.view ty with
+  | T.AppBuiltin ((Builtin.Arrow | Builtin.TyInt | Builtin.TyRat), _)
+  | T.Bind (Binder.ForallTy, _, _) -> false
+  | _ -> true
+
 (** {2 Unary Unification} *)
 
 module Inner = struct
   type ty = T.t
   type term = T.t
+
+  type delayed_constr = term * term
 
   (* public "bind" function that performs occur check *)
   let bind subst v t =
@@ -136,31 +144,31 @@ module Inner = struct
     else if S.mem subst v then fail()
     else S.bind subst v t
 
-  let rec unif_rec ~op subst t1s t2s =
+  let rec unif_rec ~op subst t1s t2s c_l : Subst.t * delayed_constr list =
     let t1,sc1 = S.deref subst t1s
     and t2,sc2 = S.deref subst t2s in
     (* first, unify types *)
-    let subst = match T.ty t1, T.ty t2 with
-      | T.NoType, T.NoType -> subst
+    let subst, c_l = match T.ty t1, T.ty t2 with
+      | T.NoType, T.NoType -> subst, c_l
       | T.NoType, _
       | _, T.NoType -> fail()
       | T.HasType ty1, T.HasType ty2 ->
-        unif_rec ~op subst (ty1,sc1) (ty2,sc2)
+        unif_rec ~op subst (ty1,sc1) (ty2,sc2) c_l
     in
-    unif_term ~op subst t1 sc1 t2 sc2
-  and unif_term ~op subst t1 sc1 t2 sc2 =
+    unif_term ~op subst t1 sc1 t2 sc2 c_l
+  and unif_term ~op subst t1 sc1 t2 sc2 c_l : _ * _ list =
     let view1 = T.view t1 and view2 = T.view t2 in
     match view1, view2 with
       | _ when sc1=sc2 && T.equal t1 t2 ->
-        subst (* the terms are equal under any substitution *)
+        subst, c_l (* the terms are equal under any substitution *)
       | T.Var _, _
       | _, T.Var _ ->
         begin match view1, view2, op with
           | T.Var v1, T.Var v2, O_equal ->
             if HVar.equal T.equal v1 v2 && sc1=sc2
-            then subst else fail()
+            then subst, c_l else fail()
           | T.Var v1, T.Var v2, (O_unify | O_variant | O_match_protect _)
-            when HVar.equal T.equal v1 v2 && sc1=sc2 -> subst
+            when HVar.equal T.equal v1 v2 && sc1=sc2 -> subst, c_l
           | T.Var v1, _, O_match_protect (P_vars s) when T.VarSet.mem v1 s ->
             assert (sc1=sc2);
             fail() (* blocked variable *)
@@ -169,54 +177,70 @@ module Inner = struct
           | T.Var v1, _, (O_unify | O_match_protect _) ->
             if occurs_check ~depth:0 subst (v1,sc1) (t2,sc2)
             then fail () (* occur check or t2 is open *)
-            else S.bind subst (v1,sc1) (t2,sc2)
+            else S.bind subst (v1,sc1) (t2,sc2), c_l
           | T.Var v1, T.Var _, O_variant when sc1<>sc2 ->
-            S.bind subst (v1,sc1) (t2,sc2)
+            S.bind subst (v1,sc1) (t2,sc2), c_l
           | _, T.Var v2, O_unify ->
             if occurs_check ~depth:0 subst (v2,sc2) (t1,sc1)
             then fail() (* occur check *)
-            else S.bind subst (v2,sc2) (t1,sc1)
+            else S.bind subst (v2,sc2) (t1,sc1), c_l
           | _ -> fail ()  (* fail *)
         end
       | T.Bind (s1, varty1, t1'), T.Bind (s2, varty2, t2') when Binder.equal s1 s2 ->
         (* FIXME: should carry a "depth" parameter for closedness checks? *)
-        let subst = unif_rec ~op subst (varty1,sc1) (varty2,sc2) in
-        unif_rec ~op subst (t1',sc1) (t2',sc2)
-      | T.DB i, T.DB j -> if i = j then subst else raise Fail
-      | T.Const f, T.Const g when ID.equal f g -> subst
+        let subst, c_l = unif_rec ~op subst (varty1,sc1) (varty2,sc2) c_l in
+        unif_rec ~op subst (t1',sc1) (t2',sc2) c_l
+      | T.DB i, T.DB j -> if i = j then subst, c_l else raise Fail
+      | T.Const f, T.Const g when ID.equal f g -> subst, c_l
+      | _ when op=O_unify && not (type_is_unifiable (T.ty_exn t1)) ->
+        (* push pair as a constraint, because of typing *)
+        subst, (t1,t2)::c_l
       | T.App (f1, l1), T.App (f2, l2) ->
         begin match T.view f1, T.view f2 with
           | T.Const id1, T.Const id2 ->
             if ID.equal id1 id2 && List.length l1 = List.length l2
-            then unif_list ~op subst l1 sc1 l2 sc2
+            then unif_list ~op subst l1 sc1 l2 sc2 c_l
             else fail()
-          | _ ->
+          | T.Var _, _
+          | _, T.Var _ ->
             (* currying: unify "from the right" *)
             let l1, l2 = pair_lists f1 l1 f2 l2 in
-            unif_list ~op subst l1 sc1 l2 sc2
+            begin
+              try unif_list ~op subst l1 sc1 l2 sc2 c_l
+              with Fail ->
+                if op=O_unify
+                then subst, (t1,t2) :: c_l
+                else fail()
+            end
+          | _ -> fail()
         end
       | T.AppBuiltin (s1,l1), T.AppBuiltin (s2, l2) when Builtin.equal s1 s2 ->
-        unif_list ~op subst l1 sc1 l2 sc2
+        unif_list ~op subst l1 sc1 l2 sc2 c_l
       | _, _ -> raise Fail
 
   (* unify lists using the given "unificator" and continuation [k] *)
-  and unif_list ~op subst l1 sc1 l2 sc2 = match l1, l2 with
-    | [], [] -> subst
+  and unif_list ~op subst l1 sc1 l2 sc2 c_l : _ * _ list = match l1, l2 with
+    | [], [] -> subst, c_l
     | _, []
     | [], _ -> fail ()
     | t1::l1', t2::l2' ->
-      let subst = unif_rec ~op subst (t1,sc1) (t2,sc2) in
-      unif_list ~op subst l1' sc1 l2' sc2
+      let subst, c_l = unif_rec ~op subst (t1,sc1) (t2,sc2) c_l in
+      unif_list ~op subst l1' sc1 l2' sc2 c_l
 
   let unification ?(subst=Subst.empty) a b =
     Util.with_prof prof_unify
-      (fun () -> unif_rec ~op:O_unify subst a b) ()
+      (fun () -> unif_rec ~op:O_unify subst a b []) ()
 
   let matching ?(subst=Subst.empty) ~pattern b =
     if Scoped.same_scope pattern b then invalid_arg "Unif.matching: same scopes";
     let scope = Scoped.scope b in
     Util.with_prof prof_matching
-      (fun () -> unif_rec ~op:(O_match_protect (P_scope scope)) subst pattern b)
+      (fun () ->
+         let subst, c_l =
+           unif_rec ~op:(O_match_protect (P_scope scope)) subst pattern b []
+         in
+         assert (c_l = []);
+         subst)
       ()
 
   let matching_same_scope
@@ -227,8 +251,12 @@ module Inner = struct
     let blocked = T.VarSet.of_seq protect in
     Util.with_prof prof_matching
       (fun () ->
-         unif_rec ~op:(O_match_protect (P_vars blocked)) subst
-           (Scoped.make pattern scope) (Scoped.make b scope))
+         let subst, c_l =
+           unif_rec ~op:(O_match_protect (P_vars blocked)) subst
+             (Scoped.make pattern scope) (Scoped.make b scope) []
+         in
+         assert (c_l = []);
+         subst)
       ()
 
   let matching_adapt_scope ?protect ?subst ~pattern t =
@@ -238,12 +266,13 @@ module Inner = struct
     else matching ?subst ~pattern t
 
   let variant ?(subst=Subst.empty) a b =
-    let subst = unif_rec ~op:O_variant subst a b in
+    let subst, c_l = unif_rec ~op:O_variant subst a b [] in
+    assert (c_l = []);
     if Subst.is_renaming subst then subst else raise Fail
 
   let equal ~subst a b =
     try
-      ignore (unif_rec ~op:O_equal subst a b);
+      ignore (unif_rec ~op:O_equal subst a b []);
       true
     with Fail -> false
 
@@ -279,8 +308,8 @@ module Ty = struct
   let bind =
     (bind :> subst -> ty HVar.t Scoped.t -> term Scoped.t -> subst)
 
-  let unification =
-    (unification :> ?subst:subst -> term Scoped.t -> term Scoped.t -> subst)
+  let unification_ =
+    (unification :> ?subst:subst -> term Scoped.t -> term Scoped.t -> subst * delayed_constr list)
 
   let matching =
     (matching :> ?subst:subst ->
@@ -315,6 +344,7 @@ module FO = struct
   open Inner
   type ty = Type.t
   type term = Term.t
+  type delayed_constr = term * term
 
   let bind =
     (bind :> subst -> ty HVar.t Scoped.t -> term Scoped.t -> subst)

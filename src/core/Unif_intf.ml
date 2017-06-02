@@ -12,9 +12,18 @@ module type S = sig
       (performs an occur-check first)
       @raise Fail if occurs-check fires *)
 
-  val unification : ?subst:subst ->
+  (** A constraint delayed because unification for this pair of terms is
+      not syntactic *)
+  type delayed_constr = term * term
+
+  val unify_syn : ?subst:subst ->
     term Scoped.t -> term Scoped.t -> subst
-  (** Unify terms, returns a subst or
+  (** Unify terms syntictally, returns a subst
+      @raise Fail if the terms are not unifiable *)
+
+  val unify_with_constr : ?subst:subst ->
+    term Scoped.t -> term Scoped.t -> subst * delayed_constr list
+  (** Unify terms, returns a subst + constraints or
       @raise Fail if the terms are not unifiable *)
 
   val matching : ?subst:subst ->
@@ -56,6 +65,9 @@ module type S = sig
       substitution will return the same term. *)
 
   val are_unifiable : term -> term -> bool
+
+  val are_unifiable_with_constr : term -> term -> bool
+  (** Unifiable with some additional constraints? *)
 
   val matches : pattern:term -> term -> bool
 
